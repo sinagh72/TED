@@ -53,14 +53,14 @@
 ## Pre-Training Phase
 
 ### 1. Dataset Preparation
-1. Download the dataset and unzip it into the `/data` folder.
+1. Download the [dataset](<https://www.kaggle.com/code/jitshil143/age-gender-dataset/input>)and unzip it into the `/data` folder.
 
 ### 2. Install Additional Python Libraries
 1. Ensure that all required libraries listed in `requirements.txt` are installed:
    - Run: `pip install -r requirements.txt`.
 
 ### 3. Download the Pre-Trained SimMIM Model
-1. Download the pre-trained SimMIM model from the model hub.
+1. Download the pre-trained SimMIM [model](<https://github.com/SwinTransformer/storage/releases/download/v2.0.0/swinv2_base_patch4_window12_192_22k.pth>) from the model [hub](<https://github.com/microsoft/Swin-Transformer>).
 2. Place the model file in the `models` directory.
 
 ### 4. Start Pre-Training
@@ -79,7 +79,3 @@
 - Ensure that all files and folders (`data`, `models`, `requirements.txt`, etc.) are properly organized as described.
 - Follow the steps in the exact order to ensure smooth execution.
 - For additional information or troubleshooting, refer to the provided PDF or project documentation.
-
---- 
-
-This **README.md** ensures clarity and comprehensiveness for both local training and pre-training tasks. Let me know if you need adjustments!
