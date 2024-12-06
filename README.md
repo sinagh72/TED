@@ -53,7 +53,7 @@
 ## Pre-Training Phase
 
 ### 1. Dataset Preparation
-1. Download the [dataset](<https://www.kaggle.com/code/jitshil143/age-gender-dataset/input>)and unzip it into the `/data` folder.
+1. Download the [dataset](<https://www.kaggle.com/code/jitshil143/age-gender-dataset/input>) and unzip it into the `/data` folder.
 
 ### 2. Install Additional Python Libraries
 1. Ensure that all required libraries listed in `requirements.txt` are installed:
