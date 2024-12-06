@@ -120,7 +120,6 @@ class SimMIM(nn.Module):
 
 
 def build_simmim(config):
-    model_type = config.MODEL.TYPE
     encoder = SwinTransformerV2ForSimMIM(
         img_size=config.DATA.IMG_SIZE,
         patch_size=config.MODEL.SWINV2.PATCH_SIZE,

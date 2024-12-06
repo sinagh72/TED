@@ -14,9 +14,6 @@ import torch
 class CustomDataset(Dataset):
 
     def __init__(self, transform=None, dataset=None, img_type="RGB"):
-        """
-        hugging face login
-        """
         self.dataset = dataset
         self.transform = transform
         self.img_type = img_type
@@ -39,12 +36,13 @@ class CustomDataset(Dataset):
 
 class CustomDatamodule(pl.LightningDataModule):
     def __init__(self, root_dir, dataset_name=None, batch_size=None, train_transform=None, test_transform=None,
+                 train_csv_file="train.csv", val_csv_file="val.csv", test_csv_file="test.csv",
                  classes={}):
         """
         :param batch_size: int
         :param train_transform: transforms
         :param test_transform: transforms
-        :param classes: dictionary of classes: NORMAL: 0
+        :param classes: dictionary of classes: {NORMAL: 0, AMD: 1, ...}
         """
         super().__init__()
         self.root_dir = root_dir
@@ -53,26 +51,27 @@ class CustomDatamodule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.dataset_name = dataset_name
         self.classes = classes
-
-    def prepare_data(self) -> None:
-        self.train_data = load_from_csv(self.root_dir, "train.csv")
-        self.val_data = load_from_csv(self.root_dir, "val.csv")
-        self.test_data = load_from_csv(self.root_dir, "test.csv")
+        self.train_csv_file = train_csv_file
+        self.val_csv_file = val_csv_file
+        self.test_csv_file = test_csv_file
 
     def setup(self, stage: str) -> None:
         # Assign Train for use in Dataloaders
         if stage == "train":
-            self.data_train = CustomDataset(transform=self.train_transform, dataset=self.train_data)
+            train_data = load_from_csv(self.root_dir, self.train_csv_file)
+            self.data_train = CustomDataset(transform=self.train_transform, dataset=train_data)
             print(f"{self.dataset_name} train data len:", len(self.data_train))
             print(self.train_data[0])
         # Assign val split(s) for use in Dataloaders
         elif stage == "val":
-            self.data_val = CustomDataset(transform=self.test_transform, dataset=self.val_data)
+            val_data = load_from_csv(self.root_dir, self.val_csv_file)
+            self.data_val = CustomDataset(transform=self.test_transform, dataset=val_data)
             print(f"{self.dataset_name} val data len:", len(self.data_val))
 
         # Assign Test split(s) for use in Dataloaders
         if stage == "test":
-            self.data_test = CustomDataset(transform=self.test_transform, dataset=self.test_data)
+            test_data = load_from_csv(self.root_dir, self.test_csv_file)
+            self.data_test = CustomDataset(transform=self.test_transform, dataset=test_data)
             print(f"{self.dataset_name} test data len:", len(self.data_test))
 
     def train_dataloader(self, shuffle: bool = True, drop_last: bool = True, pin_memory: bool = True,
@@ -109,8 +108,10 @@ class CustomDatamodule(pl.LightningDataModule):
                           persistent_workers=True)
 
 
-def load_from_csv(root_dir, csv_file):
+def load_from_csv(root_dir, csv_file, append_path=None):
     data_df = pd.read_csv(os.path.join(root_dir, csv_file))
+    if append_path:
+        return [(os.path.join(append_path, row['Directory']), row['Label']) for _, row in data_df.iterrows()]
     return [(row['Directory'], row['Label']) for _, row in data_df.iterrows()]
 
 

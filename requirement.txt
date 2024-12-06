@@ -2,3 +2,7 @@ lightning
 scikit-learn
 tensorboard
 pandas
+timm
+yacs
+termcolor
+scipy

@@ -15,17 +15,18 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
-import torch.cuda.amp as amp
+import torch.amp as amp
 from timm.utils import AverageMeter
 
 from config import get_config
-from data import build_loader
+from dataset import build_loader
 from lr_scheduler import build_scheduler
 from optimizer import build_optimizer
 from logger import create_logger
 from utils_simmim import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper
-
+from optimizer import build_optimizer
 from models.simmim import build_simmim
+from lr_scheduler import build_scheduler
 
 # pytorch major version (1.x or 2.x)
 PYTORCH_MAJOR_VERSION = int(torch.__version__.split('.')[0])
@@ -33,7 +34,7 @@ PYTORCH_MAJOR_VERSION = int(torch.__version__.split('.')[0])
 
 def parse_option():
     parser = argparse.ArgumentParser('SimMIM pre-training script', add_help=False)
-    parser.add_argument('--cfg', type=str, required=True, metavar="FILE", help='path to config file', )
+    parser.add_argument('--cfg', type=str, required=True, metavar="FILE", help='path to config file', default="./config/simmim_pretrain__swinv2_base__img192_window12__800ep.py")
     parser.add_argument(
         "--opts",
         help="Modify config options by adding 'KEY VALUE' pairs. ",
@@ -42,10 +43,10 @@ def parse_option():
     )
 
     # easy config modification
-    parser.add_argument('--batch-size', type=int, help="batch size for single GPU")
-    parser.add_argument('--data-path', type=str, help='path to dataset')
-    parser.add_argument('--resume', help='resume from checkpoint')
-    parser.add_argument('--accumulation-steps', type=int, help="gradient accumulation steps")
+    parser.add_argument('--batch-size', type=int, help="batch size for single GPU", default=2)
+    parser.add_argument('--data-path', type=str, help='path to dataset', default="./data/UTKFace/UTKFace/UTKFace")
+    parser.add_argument('--resume', help='resume from checkpoint', default=True)
+    parser.add_argument('--accumulation-steps', type=int, help="gradient accumulation steps", default=10)
     parser.add_argument('--use-checkpoint', action='store_true',
                         help="whether to use gradient checkpointing to save memory")
     parser.add_argument('--enable-amp', action='store_true')
@@ -68,14 +69,14 @@ def parse_option():
     return args, config
 
 
-def main(config):
+def main(config, device):
     """load data"""
-    data_loader_train = build_loader(config, simmim=True, is_pretrain=True)
+    data_loader_train = build_loader(config, is_pretrain=True)
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
 
     """load model"""
-    model = build_simmim(config, is_pretrain=True)
-    model.cuda()
+    model = build_simmim(config)
+    model.cuda(device)
     logger.info(str(model))
 
     optimizer = build_optimizer(config, model, simmim=True, is_pretrain=True)
@@ -89,7 +90,7 @@ def main(config):
         logger.info(f"number of GFLOPs: {flops / 1e9}")
 
     lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
-    scaler = amp.GradScaler()
+    scaler = amp.GradScaler('cuda')
 
     if config.TRAIN.AUTO_RESUME:
         resume_file = auto_resume_helper(config.OUTPUT, logger)
@@ -104,7 +105,7 @@ def main(config):
             logger.info(f'no checkpoint found in {config.OUTPUT}, ignoring auto resume')
 
     if config.MODEL.RESUME:
-        load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, scaler, logger)
+        load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, scaler, logger, device)
 
     logger.info("Start training")
     start_time = time.time()
@@ -136,38 +137,33 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         img = img.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
-        with amp.autocast(enabled=config.ENABLE_AMP):
+        with amp.autocast('cuda', enabled=config.ENABLE_AMP):
             loss = model(img, mask)
 
-        if config.TRAIN.ACCUMULATION_STEPS > 1:
-            loss = loss / config.TRAIN.ACCUMULATION_STEPS
-            scaler.scale(loss).backward()
+        loss = loss / config.TRAIN.ACCUMULATION_STEPS  # Scale loss for accumulation
+        scaler.scale(loss).backward()
+        
+        if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0 or (idx + 1) == num_steps:
+            # Perform unscale and gradient clipping only once per accumulation step
             if config.TRAIN.CLIP_GRAD:
                 scaler.unscale_(optimizer)
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
             else:
                 grad_norm = get_grad_norm(model.parameters())
-            if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
-                scaler.step(optimizer)
-                optimizer.zero_grad()
-                scaler.update()
-                lr_scheduler.step_update(epoch * num_steps + idx)
-        else:
-            optimizer.zero_grad()
-            scaler.scale(loss).backward()
-            if config.TRAIN.CLIP_GRAD:
-                scaler.unscale_(optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
-            else:
-                grad_norm = get_grad_norm(model.parameters())
+
             scaler.step(optimizer)
+            optimizer.zero_grad()
             scaler.update()
             lr_scheduler.step_update(epoch * num_steps + idx)
-
+        else:
+            grad_norm = None  # Avoid duplicate gradient clipping
+        
         torch.cuda.synchronize()
 
-        loss_meter.update(loss.item(), img.size(0))
-        norm_meter.update(grad_norm)
+        loss_meter.update(loss.item() * config.TRAIN.ACCUMULATION_STEPS, img.size(0))
+        if grad_norm is not None:
+            norm_meter.update(grad_norm)
+
         loss_scale_meter.update(scaler.get_scale())
         batch_time.update(time.time() - end)
         end = time.time()
@@ -189,6 +185,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
 
 if __name__ == '__main__':
+    device = 'cuda:0'
     _, config = parse_option()
 
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
@@ -198,7 +195,7 @@ if __name__ == '__main__':
     else:
         rank = -1
         world_size = -1
-    torch.cuda.set_device(config.LOCAL_RANK)
+    torch.cuda.set_device(device)
     torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
     torch.distributed.barrier()
 
@@ -234,4 +231,4 @@ if __name__ == '__main__':
     # print config
     logger.info(config.dump())
 
-    main(config)
+    main(config, device)
