@@ -63,10 +63,10 @@ class SwinTransformerV2ForSimMIM(SwinTransformerV2):
             x = layer(x)
         x = self.norm(x)
 
-        x = x.transpose(1, 2)
+        x = x.transpose(1, 2).contiguous()
         B, C, L = x.shape
         H = W = int(L ** 0.5)
-        x = x.reshape(B, C, H, W)
+        x = x.reshape(B, C, H, W).contiguous()
         return x
 
     @torch.jit.ignore

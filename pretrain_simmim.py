@@ -142,7 +142,10 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
         loss = loss / config.TRAIN.ACCUMULATION_STEPS  # Scale loss for accumulation
         scaler.scale(loss).backward()
-        
+        # Make gradients contiguous
+        for param in model.parameters():
+            if param.grad is not None:
+                param.grad = param.grad.contiguous()
         if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0 or (idx + 1) == num_steps:
             # Perform unscale and gradient clipping only once per accumulation step
             if config.TRAIN.CLIP_GRAD:

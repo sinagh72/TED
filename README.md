@@ -60,7 +60,7 @@
    - Run: `pip install -r requirements.txt`.
 
 ### 3. Download the Pre-Trained SimMIM Model
-1. Download the pre-trained SimMIM [model](<https://github.com/SwinTransformer/storage/releases/download/v2.0.0/swinv2_base_patch4_window12_192_22k.pth>) from the model [hub](<https://github.com/microsoft/Swin-Transformer>).
+1. Download the pre-trained SimMIM [model](<https://huggingface.co/zdaxie/SimMIM/resolve/main/simmim_swinv2_pretrain_models/swinv2_large_1k_500k.pth?download=true>) from the model [hub](<https://github.com/microsoft/Swin-Transformer/blob/main/MODELHUB.md#simmim-pretrained-swin-v2-models>).
 2. Place the model file in the `models` directory.
 
 ### 4. Start Pre-Training

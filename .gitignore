@@ -3,4 +3,5 @@
 ./lightning_logs
 output
 models/*.pth
+models/swinv2_large_1k_500k.pth
 data/
